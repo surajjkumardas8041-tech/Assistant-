@@ -64,7 +64,6 @@ jobs:
       - name: Fix Nova Database
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-
           cat > app/src/main/java/com/example/data/db/InteractionEntity.kt <<'EOF'
           package com.example.data.db
 
@@ -147,6 +146,36 @@ jobs:
 
           echo "Database files fixed successfully."
 
+      - name: Fix Nova Dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          BUILD_GRADLE="app/build.gradle"
+          if [ ! -f "$BUILD_GRADLE" ]; then
+            BUILD_GRADLE="app/build.gradle.kts"
+          fi
+
+          python3 -c "
+          path = '$BUILD_GRADLE'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          deps = '''
+              implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+              implementation 'com.squareup.retrofit2:converter-moshi:2.9.0'
+              implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+              implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
+              implementation 'com.squareup.moshi:moshi-kotlin:1.15.0'
+          '''.strip()
+
+          if 'dependencies {' in content:
+              content = content.replace('dependencies {', 'dependencies {\n    ' + deps)
+              with open(path, 'w') as f:
+                  f.write(content)
+              print('Dependencies added successfully.')
+          else:
+              print('Error: dependencies block not found.')
+          "
+
       - name: Verify Nova Project
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
@@ -179,12 +208,4 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
-dependencies {
-    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-    implementation 'com.squareup.retrofit2:converter-moshi:2.9.0' // অথবা Gson কনভার্টার ব্যবহার করলে সেটি দিন
-    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
-    implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
-    
-    // Moshi (JsonClass এর জন্য)
-    implementation 'com.squareup.moshi:moshi-kotlin:1.15.0'
-}
+          

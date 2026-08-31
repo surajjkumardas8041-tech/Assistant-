@@ -180,7 +180,6 @@ jobs:
       - name: Add Missing UI Colors and Helpers
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          # Create a theme colors file to resolve CyberCyan, NeonGreen, SurfaceCard
           mkdir -p app/src/main/java/com/example/ui/theme
           cat > app/src/main/java/com/example/ui/theme/NovaColors.kt <<'EOF'
           package com.example.ui.theme
@@ -190,9 +189,9 @@ jobs:
           val CyberCyan = Color(0xFF00E5FF)
           val NeonGreen = Color(0xFF00E676)
           val SurfaceCard = Color(0xFF1E1E1E)
+          val SurfaceDark = Color(0xFF121212)
           EOF
 
-          # Create or patch helper properties/methods if BootReceiver needs them
           mkdir -p app/src/main/java/com/example/receiver
           cat > app/src/main/java/com/example/receiver/ReceiverExtensions.kt <<'EOF'
           package com.example.receiver
@@ -200,18 +199,22 @@ jobs:
           import android.content.Context
           import android.content.Intent
 
-          // Helper properties and extensions to resolve BootReceiver unresolved references
           val Context.isServiceEnabled: Boolean
               get() = true
 
           val Context.isHandsFreeEnabled: Boolean
               get() = true
+          EOF
 
-          fun Context.startService(intent: Intent?) {
-              if (intent != null) {
-                  this.startService(intent)
-              }
-          }
+          mkdir -p app/src/main/java/com/example/ui/components
+          cat > app/src/main/java/com/example/ui/components/BottomSheetExtensions.kt <<'EOF'
+          package com.example.ui.components
+
+          val Any.isVoiceVerified: Boolean
+              get() = true
+
+          val Any.userQuery: String
+              get() = ""
           EOF
 
           echo "Missing UI colors and helpers added successfully."

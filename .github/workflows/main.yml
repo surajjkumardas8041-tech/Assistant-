@@ -179,3 +179,12 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+dependencies {
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-moshi:2.9.0' // অথবা Gson কনভার্টার ব্যবহার করলে সেটি দিন
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
+    
+    // Moshi (JsonClass এর জন্য)
+    implementation 'com.squareup.moshi:moshi-kotlin:1.15.0'
+}

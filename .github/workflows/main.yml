@@ -159,12 +159,13 @@ jobs:
           with open(path, 'r') as f:
               content = f.read()
 
+          # Use Kotlin DSL format with double quotes and parentheses
           deps = '''
-              implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-              implementation 'com.squareup.retrofit2:converter-moshi:2.9.0'
-              implementation 'com.squareup.okhttp3:okhttp:4.11.0'
-              implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
-              implementation 'com.squareup.moshi:moshi-kotlin:1.15.0'
+              implementation(\"com.squareup.retrofit2:retrofit:2.9.0\")
+              implementation(\"com.squareup.retrofit2:converter-moshi:2.9.0\")
+              implementation(\"com.squareup.okhttp3:okhttp:4.11.0\")
+              implementation(\"com.squareup.okhttp3:logging-interceptor:4.11.0\")
+              implementation(\"com.squareup.moshi:moshi-kotlin:1.15.0\")
           '''.strip()
 
           if 'dependencies {' in content:

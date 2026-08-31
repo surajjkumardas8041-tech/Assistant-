@@ -16,7 +16,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Nova
+
+      - name: Checkout Nova Repository
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
@@ -28,37 +29,109 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK 35
+      - name: Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Install Android SDK
         run: |
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
-          yes | sdkmanager --licenses || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
-      - name: Verify project
+      # ----------------------------------------
+      # Extract Nova ZIP
+      # ----------------------------------------
+      - name: Extract Nova ZIP
         run: |
-          echo "Project files:"
-          ls -la
-          echo "App module:"
-          ls -la app
+          mkdir -p nova_project
 
+          if [ ! -f nova.zip ]; then
+            echo "ERROR: nova.zip not found!"
+            exit 1
+          fi
+
+          unzip -q nova.zip -d nova_project
+
+          echo "===== Extracted Nova files ====="
+          find nova_project -maxdepth 4 -type f | head -200
+
+      # ----------------------------------------
+      # Find Android project automatically
+      # ----------------------------------------
+      - name: Locate Nova Android Project
+        run: |
+          PROJECT_FILE=$(find nova_project -type f \
+            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            -print -quit)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: Android Gradle project not found!"
+            echo "Searching extracted files..."
+            find nova_project -maxdepth 6 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+
+          echo "Nova Android project found:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      # ----------------------------------------
+      # Verify project
+      # ----------------------------------------
+      - name: Verify Nova Project
+        run: |
+          echo "===== PROJECT DIRECTORY ====="
+          echo "$PROJECT_DIR"
+
+          echo "===== PROJECT FILES ====="
+          ls -la "$PROJECT_DIR"
+
+          echo "===== APP MODULE ====="
+          ls -la "$PROJECT_DIR/app"
+
+          echo "===== SETTINGS ====="
+          cat "$PROJECT_DIR/settings.gradle.kts" || true
+
+      # ----------------------------------------
+      # Build APK
+      # ----------------------------------------
       - name: Build Nova Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          gradle :app:assembleDebug --stacktrace --no-daemon
+          gradle :app:assembleDebug \
+            --stacktrace \
+            --no-daemon
 
-      - name: Find APK
+      # ----------------------------------------
+      # Find APK
+      # ----------------------------------------
+      - name: Find Generated APK
         run: |
-          echo "===== NOVA APK ====="
-          find . -type f -name "*.apk" -print
+          echo "================================"
+          echo "       NOVA APK GENERATED"
+          echo "================================"
 
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
+
+      # ----------------------------------------
+      # Upload APK
+      # ----------------------------------------
       - name: Upload Nova APK
         uses: actions/upload-artifact@v4
         with:
           name: Nova-Assistant-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30

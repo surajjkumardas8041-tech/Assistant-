@@ -1,4 +1,4 @@
-name: Nova Assistant APK
+name: Build Nova APK
 
 on:
   workflow_dispatch:
@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  build-apk:
-    name: Build Nova APK
+  build:
+    name: Build Nova Debug APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Nova source
+      - name: Checkout Nova
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
@@ -28,24 +28,32 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+      - name: Install Android SDK 35
+        run: |
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+          yes | sdkmanager --licenses || true
 
-      - name: Setup Gradle 9.3.1
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.3.1'
+          gradle-version: '8.10.2'
 
-      - name: Verify Gradle
-        run: gradle --version
+      - name: Verify project
+        run: |
+          echo "Project files:"
+          ls -la
+          echo "App module:"
+          ls -la app
 
       - name: Build Nova Debug APK
-        run: gradle assembleDebug --stacktrace
-
-      - name: Show generated APK
         run: |
-          echo "Nova APK:"
-          find app/build/outputs/apk/debug -type f -name "*.apk" -print
+          gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Find APK
+        run: |
+          echo "===== NOVA APK ====="
+          find . -type f -name "*.apk" -print
 
       - name: Upload Nova APK
         uses: actions/upload-artifact@v4

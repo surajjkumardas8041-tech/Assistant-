@@ -16,8 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout Nova Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
@@ -29,109 +28,154 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        run: |
-          yes | sdkmanager --licenses || true
-
       - name: Install Android SDK
         run: |
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
+          yes | sdkmanager --licenses || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
-      # ----------------------------------------
-      # Extract Nova ZIP
-      # ----------------------------------------
       - name: Extract Nova ZIP
         run: |
-          mkdir -p nova_project
-
-          if [ ! -f nova.zip ]; then
-            echo "ERROR: nova.zip not found!"
-            exit 1
-          fi
-
+          rm -rf nova_project
+          mkdir nova_project
           unzip -q nova.zip -d nova_project
 
-          echo "===== Extracted Nova files ====="
-          find nova_project -maxdepth 4 -type f | head -200
-
-      # ----------------------------------------
-      # Find Android project automatically
-      # ----------------------------------------
-      - name: Locate Nova Android Project
+      - name: Locate Nova Project
         run: |
-          PROJECT_FILE=$(find nova_project -type f \
-            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
-            -print -quit)
+          SETTINGS=$(find nova_project -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) -print -quit)
 
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: Android Gradle project not found!"
-            echo "Searching extracted files..."
-            find nova_project -maxdepth 6 -type f | sort
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: Nova Android project not found"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_FILE")
-
-          echo "Nova Android project found:"
-          echo "$PROJECT_DIR"
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      # ----------------------------------------
-      # Verify project
-      # ----------------------------------------
-      - name: Verify Nova Project
-        run: |
-          echo "===== PROJECT DIRECTORY ====="
+          echo "Nova project:"
           echo "$PROJECT_DIR"
 
-          echo "===== PROJECT FILES ====="
-          ls -la "$PROJECT_DIR"
+      - name: Fix Nova Database
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
 
-          echo "===== APP MODULE ====="
-          ls -la "$PROJECT_DIR/app"
+          cat > app/src/main/java/com/example/data/db/InteractionEntity.kt <<'EOF'
+          package com.example.data.db
 
-          echo "===== SETTINGS ====="
-          cat "$PROJECT_DIR/settings.gradle.kts" || true
+          import androidx.room.Entity
+          import androidx.room.PrimaryKey
 
-      # ----------------------------------------
-      # Build APK
-      # ----------------------------------------
-      - name: Build Nova Debug APK
+          @Entity(tableName = "interaction_history")
+          data class InteractionEntity(
+              @PrimaryKey(autoGenerate = true)
+              val id: Long = 0,
+              val timestamp: Long = System.currentTimeMillis(),
+              val queryText: String,
+              val responseText: String,
+              val actionType: String,
+              val isOwnerVerified: Boolean,
+              val isSuccess: Boolean
+          )
+          EOF
+
+          cat > app/src/main/java/com/example/data/db/InteractionDao.kt <<'EOF'
+          package com.example.data.db
+
+          import androidx.room.Dao
+          import androidx.room.Insert
+          import androidx.room.OnConflictStrategy
+          import androidx.room.Query
+          import kotlinx.coroutines.flow.Flow
+
+          @Dao
+          interface InteractionDao {
+
+              @Query("SELECT * FROM interaction_history ORDER BY timestamp DESC LIMIT 100")
+              fun getAllInteractions(): Flow<List<InteractionEntity>>
+
+              @Insert(onConflict = OnConflictStrategy.REPLACE)
+              suspend fun insertInteraction(item: InteractionEntity): Long
+
+              @Query("DELETE FROM interaction_history")
+              suspend fun clearHistory()
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/data/db/NovaDatabase.kt <<'EOF'
+          package com.example.data.db
+
+          import android.content.Context
+          import androidx.room.Database
+          import androidx.room.Room
+          import androidx.room.RoomDatabase
+
+          @Database(
+              entities = [InteractionEntity::class],
+              version = 1,
+              exportSchema = false
+          )
+          abstract class NovaDatabase : RoomDatabase() {
+
+              abstract fun interactionDao(): InteractionDao
+
+              companion object {
+
+                  @Volatile
+                  private var INSTANCE: NovaDatabase? = null
+
+                  fun getInstance(context: Context): NovaDatabase {
+                      return INSTANCE ?: synchronized(this) {
+                          INSTANCE ?: Room.databaseBuilder(
+                              context.applicationContext,
+                              NovaDatabase::class.java,
+                              "nova_assistant_db"
+                          )
+                              .fallbackToDestructiveMigration()
+                              .build()
+                              .also { INSTANCE = it }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo "Database files fixed successfully."
+
+      - name: Verify Nova Project
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "===== PROJECT ====="
+          ls -la
+
+          echo "===== APP ====="
+          ls -la app
+
+          echo "===== DATABASE FILES ====="
+          ls -la app/src/main/java/com/example/data/db/
+
+      - name: Build Nova APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           gradle :app:assembleDebug \
-            --stacktrace \
-            --no-daemon
+            --no-daemon \
+            --stacktrace
 
-      # ----------------------------------------
-      # Find APK
-      # ----------------------------------------
-      - name: Find Generated APK
+      - name: Find APK
         run: |
-          echo "================================"
-          echo "       NOVA APK GENERATED"
-          echo "================================"
+          echo "===== NOVA APK ====="
+          find "$PROJECT_DIR/app/build/outputs/apk/debug" \
+            -type f -name "*.apk" -print
 
-          find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            -print
-
-      # ----------------------------------------
-      # Upload APK
-      # ----------------------------------------
       - name: Upload Nova APK
         uses: actions/upload-artifact@v4
         with:
           name: Nova-Assistant-APK
-          path: |
-            ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
